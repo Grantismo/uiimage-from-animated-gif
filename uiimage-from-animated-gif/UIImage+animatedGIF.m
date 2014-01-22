@@ -15,13 +15,28 @@ static int delayCentisecondsForImageAtIndex(CGImageSourceRef const source, size_
     int delayCentiseconds = 1;
     CFDictionaryRef const properties = CGImageSourceCopyPropertiesAtIndex(source, i, NULL);
     if (properties) {
-        CFDictionaryRef const gifProperties = CFDictionaryGetValue(properties, kCGImagePropertyGIFDictionary);
-        if (gifProperties) {
-            CFNumberRef const number = CFDictionaryGetValue(gifProperties, kCGImagePropertyGIFDelayTime);
-            // Even though the GIF stores the delay as an integer number of centiseconds, ImageIO “helpfully” converts that to seconds for us.
-            delayCentiseconds = (int)lrint([fromCF number doubleValue] * 100);
+        float frameDuration = 0.1f;
+        NSDictionary *frameProperties = (__bridge NSDictionary*)properties;
+        NSDictionary *gifProperties = frameProperties[(NSString*)kCGImagePropertyGIFDictionary];
+        
+        NSNumber *delayTimeUnclampedProp = gifProperties[(NSString*)kCGImagePropertyGIFUnclampedDelayTime];
+        if(delayTimeUnclampedProp) {
+            frameDuration = [delayTimeUnclampedProp floatValue];
+        } else {
+            
+            NSNumber *delayTimeProp = gifProperties[(NSString*)kCGImagePropertyGIFDelayTime];
+            if(delayTimeProp) {
+                frameDuration = [delayTimeProp floatValue];
+            }
         }
-        CFRelease(properties);
+        
+        if (frameDuration < 0.011f)
+            frameDuration = 0.100f;
+        
+
+        delayCentiseconds = (int)lrint(frameDuration * 100);
+
+        CFRelease((__bridge CFTypeRef)(frameProperties));
     }
     return delayCentiseconds;
 }
@@ -87,6 +102,8 @@ static UIImage *animatedImageWithAnimatedGIFImageSource(CGImageSourceRef const s
     int delayCentiseconds[count]; // in centiseconds
     createImagesAndDelays(source, count, images, delayCentiseconds);
     int const totalDurationCentiseconds = sum(count, delayCentiseconds);
+    NSLog(@"total: %d", totalDurationCentiseconds);
+    
     NSArray *const frames = frameArray(count, images, delayCentiseconds, totalDurationCentiseconds);
     UIImage *const animation = [UIImage animatedImageWithImages:frames duration:(NSTimeInterval)totalDurationCentiseconds / 100.0];
     releaseImages(count, images);
